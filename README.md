@@ -1,14 +1,28 @@
-# IsoTreePred: ExtraTrees to IsolationForest Converter
+# IsoTreePred: Tree-Based Machine Learning Toolkit
 
-A Python library for converting trained ExtraTreesClassifier and ExtraTreesRegressor models into IsolationForest objects for anomaly detection.
+A comprehensive Python library for tree-based machine learning, featuring:
+- **Mondrian Forest**: Online random forests with incremental learning support
+- **ExtraTrees to IsolationForest Converter**: Repurpose trained models for anomaly detection
+- **Full Pipeline Support**: Mondrian Forest → ExtraTrees → IsolationForest
 
 ## Overview
 
-This project provides a function that allows you to repurpose trained ExtraTrees models (both classifier and regressor) as IsolationForest models for anomaly detection. This is useful when you have:
+This project provides two main components:
 
+### 1. Mondrian Forest (NEW!)
+
+An implementation of online random forests that support incremental learning through `partial_fit`:
+- **Online Learning**: Update models with new data without full retraining
+- **Scikit-learn Compatible**: Follows standard sklearn API (fit, predict, score, etc.)
+- **Export Support**: Convert to ExtraTreesClassifier/ExtraTreesRegressor
+- **Both Tasks**: Classification and regression support
+
+### 2. ExtraTrees to IsolationForest Converter
+
+Convert trained ExtraTrees models into IsolationForest for anomaly detection:
 - Pre-trained ExtraTrees models you want to use for anomaly detection
-- Need to leverage the tree structures from supervised learning for unsupervised outlier detection
-- Want to export ExtraTrees-based anomaly detection to ONNX format
+- Leverage tree structures from supervised learning for unsupervised outlier detection
+- Export ExtraTrees-based anomaly detection to ONNX format
 
 ## Installation
 
@@ -30,6 +44,29 @@ uv sync
 
 ## Quick Start
 
+### Mondrian Forest (Online Learning)
+
+```python
+from mondrian_forest import MondrianForestClassifier
+from sklearn.datasets import make_classification
+
+# Generate data
+X, y = make_classification(n_samples=1000, n_features=10, random_state=42)
+
+# Train with initial batch
+mf = MondrianForestClassifier(n_estimators=100, random_state=42)
+mf.fit(X[:500], y[:500])
+
+# Update with new data (online learning!)
+mf.partial_fit(X[500:], y[500:])
+
+# Make predictions
+predictions = mf.predict(X)
+probabilities = mf.predict_proba(X)
+```
+
+### ExtraTrees to IsolationForest Converter
+
 ```python
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.datasets import make_classification
@@ -46,6 +83,133 @@ iforest = convert_extratrees_to_isolationforest(et_model, contamination=0.1)
 # Use for anomaly detection
 predictions = iforest.predict(X)  # Returns 1 for inliers, -1 for outliers
 scores = iforest.score_samples(X)  # Returns anomaly scores
+```
+
+### Full Pipeline: Mondrian Forest → ExtraTrees → IsolationForest
+
+```python
+from mondrian_forest import MondrianForestClassifier, export_mondrian_to_extratrees
+from extratrees_to_iforest import convert_extratrees_to_isolationforest
+
+# Train Mondrian Forest
+mf = MondrianForestClassifier(n_estimators=50, random_state=42)
+mf.fit(X, y)
+
+# Export to ExtraTrees
+et = export_mondrian_to_extratrees(mf)
+
+# Convert to IsolationForest for anomaly detection
+iforest = convert_extratrees_to_isolationforest(et, contamination=0.1)
+anomalies = iforest.predict(X)
+```
+
+## Mondrian Forest Usage
+
+### Classification with Online Learning
+
+```python
+from mondrian_forest import MondrianForestClassifier
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
+# Generate data
+X, y = make_classification(n_samples=1000, n_features=10, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
+
+# Train Mondrian Forest
+mf = MondrianForestClassifier(n_estimators=50, random_state=42)
+mf.fit(X_train, y_train)
+
+# Make predictions
+y_pred = mf.predict(X_test)
+y_proba = mf.predict_proba(X_test)
+
+# Evaluate
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Accuracy: {accuracy:.3f}")
+
+# Online learning - update with new data
+new_X, new_y = make_classification(n_samples=100, n_features=10, random_state=43)
+mf.partial_fit(new_X, new_y)
+```
+
+### Regression with Incremental Updates
+
+```python
+from mondrian_forest import MondrianForestRegressor
+from sklearn.datasets import make_regression
+from sklearn.metrics import r2_score
+
+# Generate data
+X, y = make_regression(n_samples=1000, n_features=10, random_state=42)
+
+# Train in batches (simulating streaming data)
+mf = MondrianForestRegressor(n_estimators=50, random_state=42)
+
+# Initial training
+mf.fit(X[:500], y[:500])
+
+# Incremental updates
+for i in range(5, 10):
+    start = i * 100
+    end = start + 100
+    mf.partial_fit(X[start:end], y[start:end])
+
+# Make predictions
+predictions = mf.predict(X)
+r2 = r2_score(y, predictions)
+print(f"R² score: {r2:.3f}")
+```
+
+### Export to ExtraTrees
+
+```python
+from mondrian_forest import MondrianForestClassifier, export_mondrian_to_extratrees
+
+# Train Mondrian Forest
+mf = MondrianForestClassifier(n_estimators=30, random_state=42)
+mf.fit(X_train, y_train)
+
+# Export to ExtraTrees format
+et = export_mondrian_to_extratrees(mf)
+
+# Use as a standard ExtraTrees model
+et_predictions = et.predict(X_test)
+```
+
+### Lifetime Parameter
+
+The `lifetime` parameter controls tree depth. Shorter lifetimes create shallower trees:
+
+```python
+# Shallow trees (faster, less accurate)
+mf_shallow = MondrianForestClassifier(
+    n_estimators=50, 
+    lifetime=1.0,
+    random_state=42
+)
+
+# Deep trees (slower, more accurate)
+mf_deep = MondrianForestClassifier(
+    n_estimators=50,
+    lifetime=100.0,
+    random_state=42
+)
+
+# No constraint (default)
+mf_unconstrained = MondrianForestClassifier(
+    n_estimators=50,
+    lifetime=np.inf,
+    random_state=42
+)
+```
+
+### Run Complete Examples
+
+```bash
+# Run all Mondrian Forest examples
+uv run python mondrian_example.py
 ```
 
 ## Sample Usage
@@ -340,13 +504,19 @@ The project includes comprehensive end-to-end tests using pytest.
 
 ```bash
 # Run all tests
+uv run pytest -v
+
+# Run only Mondrian Forest tests
+uv run pytest test_mondrian_forest.py -v
+
+# Run only converter tests
 uv run pytest test_converter.py -v
 
 # Run specific test class
-uv run pytest test_converter.py::TestExtraTreesClassifier -v
+uv run pytest test_mondrian_forest.py::TestMondrianForestClassifier -v
 
 # Run with coverage
-uv run pytest test_converter.py --cov=extratrees_to_iforest
+uv run pytest --cov=mondrian_forest --cov=extratrees_to_iforest
 
 # Run only ONNX tests (requires onnx and skl2onnx)
 uv run pytest test_converter.py::TestONNXExport -v
@@ -355,6 +525,17 @@ uv run pytest test_converter.py::TestONNXExport -v
 ### Test Coverage
 
 The test suite includes:
+
+**Mondrian Forest Tests** (28 tests):
+- ✅ **Classifier**: Basic fit, predict, predict_proba, score
+- ✅ **Regressor**: Basic fit, predict, score
+- ✅ **Online Learning**: partial_fit (initial and incremental)
+- ✅ **Export**: Mondrian Forest → ExtraTrees conversion
+- ✅ **Integration**: Full pipeline (MF → ET → IF)
+- ✅ **Error handling**: Validation and edge cases
+- ✅ **Performance**: Large datasets, prediction consistency
+
+**Converter Tests** (20 tests):
 - ✅ **ExtraTreesClassifier** conversion and predictions
 - ✅ **ExtraTreesRegressor** conversion and predictions  
 - ✅ **ONNX export** compatibility (with max_features=None)
@@ -407,8 +588,11 @@ See `test_converter.py` for complete examples including ONNX export tests.
 
 ```
 isotreepred/
+├── mondrian_forest.py           # ⭐ NEW - Mondrian Forest implementation
 ├── extratrees_to_iforest.py    # ⭐ PUBLIC API - Main conversion module
-├── test_converter.py            # E2E test suite using pytest
+├── test_mondrian_forest.py     # E2E tests for Mondrian Forest (28 tests)
+├── test_converter.py            # E2E tests for converter (20 tests)
+├── mondrian_example.py          # Example usage demonstrations
 ├── README.md                    # This file (quick start & usage)
 ├── LIMITATIONS.md              # Detailed limitations documentation
 ├── pyproject.toml              # Project configuration
@@ -417,8 +601,11 @@ isotreepred/
 
 ### File Descriptions
 
+- **`mondrian_forest.py`** - ⭐ NEW - Mondrian Forest classifier and regressor with online learning
 - **`extratrees_to_iforest.py`** - ⭐ Public API module containing the conversion function
-- **`test_converter.py`** - Comprehensive end-to-end tests using pytest
+- **`test_mondrian_forest.py`** - Comprehensive tests for Mondrian Forest (28 tests)
+- **`test_converter.py`** - Comprehensive tests for converter (20 tests)
+- **`mondrian_example.py`** - Demonstrates all Mondrian Forest features
 - **`README.md`** - Project overview, quick start, and usage examples
 - **`LIMITATIONS.md`** - Comprehensive limitations documentation with workarounds
 
